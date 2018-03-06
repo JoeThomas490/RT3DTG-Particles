@@ -105,6 +105,7 @@ struct Particle
 	float2 SizeW       : SIZE;
 	float Age          : AGE;
 	uint Type          : TYPE;
+	float Rotation : ROTATION;
 };
   
 Particle StreamOutVS(Particle vin)
@@ -126,19 +127,24 @@ void StreamOutGS(point Particle gin[1],
 	if( gin[0].Type == PT_EMITTER )
 	{	
 		// time to emit a new particle?
-		if( gin[0].Age > 0.005f )
+		if( gin[0].Age > 0.0005f )
 		{
 			float3 vRandom = RandUnitVec3(0.0f);
 			float3 vRandom2 = RandUnitVec3(0.01f);
+			float3 vRandom3 = RandUnitVec3(0.0f);
+
 			vRandom.x *= 0.5f;
 			vRandom.z *= 0.5f;
+
+			vRandom3 += 1.0f;
 			
 			Particle p;
 			p.InitialPosW = gEmitPosW.xyz;
 			p.InitialVelW = vRandom2;
-			p.SizeW       = float2(3.0f, 3.0f);
+			p.SizeW       = float2(3.0f * vRandom3.x, 3.0f *vRandom3.y);
 			p.Age         = 0.0f;
 			p.Type        = PT_FLARE;
+			p.Rotation	  = 0.5f;
 
 			ptStream.Append(p);
 			
@@ -159,7 +165,7 @@ void StreamOutGS(point Particle gin[1],
 
 GeometryShader gsStreamOut = ConstructGSWithSO( 
 	CompileShader( gs_5_0, StreamOutGS() ), 
-	"POSITION.xyz; VELOCITY.xyz; SIZE.xy; AGE.x; TYPE.x" );
+	"POSITION.xyz; VELOCITY.xyz; SIZE.xy; AGE.x; TYPE.x; ROTATION.x" );
 	
 technique11 StreamOutTech
 {
@@ -186,6 +192,7 @@ struct VertexOut
 	float2 SizeW : SIZE;
 	float4 Color : COLOR;
 	uint   Type  : TYPE;
+	float Rotation : ROTATION;
 };
 
 VertexOut DrawVS(Particle vin)
@@ -196,6 +203,8 @@ VertexOut DrawVS(Particle vin)
 	
 	// constant acceleration equation
 	vout.PosW = 0.5f*t*t*gAccelW + t*vin.InitialVelW + vin.InitialPosW;
+
+	vout.Rotation = vin.Rotation * t;
 	
 	// fade color with time
 	float opacity = 1.0f - smoothstep(0.0f, 1.0f, t/1.0f);
@@ -235,12 +244,25 @@ void DrawGS(point VertexOut gin[1],
 		//
 		float halfWidth  = 0.5f*gin[0].SizeW.x;
 		float halfHeight = 0.5f*gin[0].SizeW.y;
+
+		float4 sinTheta[4];
+		sinTheta[0] = sin(radians(135) + gin[0].Rotation);
+		sinTheta[1] = sin(radians(45)  + gin[0].Rotation);
+		sinTheta[2] = sin(radians(225) + gin[0].Rotation);
+		sinTheta[3] = sin(radians(315) + gin[0].Rotation);
+
+		float4 cosTheta[4];
+		cosTheta[0] = cos(radians(135) + gin[0].Rotation);
+		cosTheta[1] = cos(radians(45)  + gin[0].Rotation);
+		cosTheta[2] = cos(radians(225) + gin[0].Rotation);
+		cosTheta[3] = cos(radians(315) + gin[0].Rotation);
 	
 		float4 v[4];
-		v[0] = float4(gin[0].PosW + halfWidth*right - halfHeight*up, 1.0f);
-		v[1] = float4(gin[0].PosW + halfWidth*right + halfHeight*up, 1.0f);
-		v[2] = float4(gin[0].PosW - halfWidth*right - halfHeight*up, 1.0f);
-		v[3] = float4(gin[0].PosW - halfWidth*right + halfHeight*up, 1.0f);
+		v[0] = float4(gin[0].PosW + sinTheta[0]*halfWidth*right + cosTheta[0]*halfHeight*up, 1.0f);
+		v[1] = float4(gin[0].PosW + sinTheta[1]*halfWidth*right + cosTheta[1]*halfHeight*up, 1.0f);
+		v[2] = float4(gin[0].PosW + sinTheta[2]*halfWidth*right + cosTheta[2]*halfHeight*up, 1.0f);
+		v[3] = float4(gin[0].PosW + sinTheta[3]*halfWidth*right + cosTheta[3]*halfHeight*up, 1.0f);
+
 		
 		//
 		// Transform quad vertices to world space and output 
@@ -262,6 +284,8 @@ void DrawGS(point VertexOut gin[1],
 float4 DrawPS(GeoOut pin) : SV_TARGET
 {
 	return gTexArray.Sample(samLinear, float3(pin.Tex, 0) )*pin.Color;
+	//return float4(1,0,0,1);
+	//return float4(pin.Tex.xy,0,1);
 }
 
 technique11 DrawTech
